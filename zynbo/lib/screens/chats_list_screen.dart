@@ -251,6 +251,10 @@ class _ChatList extends StatelessWidget {
                 (data['unreadCount'] as Map?)?.cast<String, dynamic>() ?? {};
             final unread = (unreadMap[currentUid] as num?)?.toInt() ?? 0;
 
+            final typingMap =
+                (data['typing'] as Map?)?.cast<String, dynamic>() ?? {};
+            final otherTyping = typingMap[otherUid] == true;
+
             return _ChatTile(
               chatId: docs[i].id,
               currentUid: currentUid,
@@ -258,6 +262,7 @@ class _ChatList extends StatelessWidget {
               lastMessage: (data['lastMessage'] as String?) ?? '',
               updatedAt: (data['updatedAt'] as Timestamp?)?.toDate(),
               unread: unread,
+              otherTyping: otherTyping,
               query: query,
             );
           },
@@ -274,6 +279,7 @@ class _ChatTile extends StatelessWidget {
   final String lastMessage;
   final DateTime? updatedAt;
   final int unread;
+  final bool otherTyping;
   final String query;
 
   const _ChatTile({
@@ -283,6 +289,7 @@ class _ChatTile extends StatelessWidget {
     required this.lastMessage,
     required this.updatedAt,
     required this.unread,
+    required this.otherTyping,
     required this.query,
   });
 
@@ -440,25 +447,31 @@ class _ChatTile extends StatelessWidget {
                               ),
                             Expanded(
                               child: Text(
-                                lastMessage.isEmpty
-                                    ? 'Tap to start chatting'
-                                    : lastMessage,
+                                otherTyping
+                                    ? 'typing…'
+                                    : (lastMessage.isEmpty
+                                        ? 'Tap to start chatting'
+                                        : lastMessage),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: GoogleFonts.spaceGrotesk(
                                   fontSize: 13,
-                                  color: hasUnread
-                                      ? ZynboApp.brandInk.withOpacity(0.85)
-                                      : (lastMessage.isEmpty
+                                  color: otherTyping
+                                      ? ZynboApp.brandTeal
+                                      : (hasUnread
                                           ? ZynboApp.brandInk
-                                              .withOpacity(0.4)
-                                          : ZynboApp.brandInk
-                                              .withOpacity(0.6)),
-                                  fontStyle: lastMessage.isEmpty
+                                              .withOpacity(0.85)
+                                          : (lastMessage.isEmpty
+                                              ? ZynboApp.brandInk
+                                                  .withOpacity(0.4)
+                                              : ZynboApp.brandInk
+                                                  .withOpacity(0.6))),
+                                  fontStyle: (otherTyping ||
+                                          lastMessage.isEmpty)
                                       ? FontStyle.italic
                                       : FontStyle.normal,
-                                  fontWeight: hasUnread
-                                      ? FontWeight.w600
+                                  fontWeight: (otherTyping || hasUnread)
+                                      ? FontWeight.w700
                                       : FontWeight.w400,
                                 ),
                               ),

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -9,6 +11,7 @@ import 'screens/login_screen.dart';
 import 'screens/chats_list_screen.dart';
 import 'screens/profile_setup_screen.dart';
 import 'services/auth_service.dart';
+import 'services/presence_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,7 +27,7 @@ Future<void> main() async {
   runApp(const ZynboApp());
 }
 
-class ZynboApp extends StatelessWidget {
+class ZynboApp extends StatefulWidget {
   const ZynboApp({super.key});
 
   // Brand palette — distinctive teal/lime aesthetic (avoids generic purple gradient)
@@ -34,33 +37,74 @@ class ZynboApp extends StatelessWidget {
   static const Color brandInk = Color(0xFF0A0F0E);
 
   @override
+  State<ZynboApp> createState() => _ZynboAppState();
+}
+
+class _ZynboAppState extends State<ZynboApp> with WidgetsBindingObserver {
+  StreamSubscription<User?>? _authSub;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    // Whenever auth flips, immediately reflect online/offline.
+    _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
+      if (user != null) PresenceService.instance.goOnline(user.uid);
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _authSub?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    switch (state) {
+      case AppLifecycleState.resumed:
+        PresenceService.instance.goOnline(uid);
+        break;
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.paused:
+      case AppLifecycleState.detached:
+      case AppLifecycleState.hidden:
+        PresenceService.instance.goOffline(uid);
+        break;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Zynbo',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
-        scaffoldBackgroundColor: brandCream,
+        scaffoldBackgroundColor: ZynboApp.brandCream,
         colorScheme: ColorScheme.fromSeed(
-          seedColor: brandTeal,
-          primary: brandTeal,
-          secondary: brandLime,
-          background: brandCream,
+          seedColor: ZynboApp.brandTeal,
+          primary: ZynboApp.brandTeal,
+          secondary: ZynboApp.brandLime,
+          background: ZynboApp.brandCream,
           surface: Colors.white,
           onPrimary: Colors.white,
-          onSecondary: brandInk,
+          onSecondary: ZynboApp.brandInk,
         ),
         textTheme: GoogleFonts.spaceGroteskTextTheme().apply(
-          bodyColor: brandInk,
-          displayColor: brandInk,
+          bodyColor: ZynboApp.brandInk,
+          displayColor: ZynboApp.brandInk,
         ),
         appBarTheme: AppBarTheme(
-          backgroundColor: brandCream,
+          backgroundColor: ZynboApp.brandCream,
           elevation: 0,
           centerTitle: false,
-          iconTheme: const IconThemeData(color: brandInk),
+          iconTheme: const IconThemeData(color: ZynboApp.brandInk),
           titleTextStyle: GoogleFonts.spaceGrotesk(
-            color: brandInk,
+            color: ZynboApp.brandInk,
             fontSize: 22,
             fontWeight: FontWeight.w700,
             letterSpacing: -0.5,
@@ -68,7 +112,7 @@ class ZynboApp extends StatelessWidget {
         ),
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ElevatedButton.styleFrom(
-            backgroundColor: brandInk,
+            backgroundColor: ZynboApp.brandInk,
             foregroundColor: Colors.white,
             elevation: 0,
             padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 18),
@@ -82,18 +126,21 @@ class ZynboApp extends StatelessWidget {
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
           fillColor: Colors.white,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(16),
-            borderSide: BorderSide(color: brandInk.withOpacity(0.08)),
+            borderSide:
+                BorderSide(color: ZynboApp.brandInk.withOpacity(0.08)),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(16),
-            borderSide: BorderSide(color: brandInk.withOpacity(0.08)),
+            borderSide:
+                BorderSide(color: ZynboApp.brandInk.withOpacity(0.08)),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(16),
-            borderSide: const BorderSide(color: brandTeal, width: 1.6),
+            borderSide: const BorderSide(color: ZynboApp.brandTeal, width: 1.6),
           ),
         ),
       ),

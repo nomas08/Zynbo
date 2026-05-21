@@ -3,8 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 /// All chat read/write logic lives here.
 /// Chats are 1:1 with deterministic IDs derived from sorted UID pairs:
 ///   chatId = "uidA_uidB" (lexicographically sorted)
-/// Each chat doc holds participants + lastMessage metadata + per-user unread counts.
-/// Messages live in /chats/{chatId}/messages/{messageId}.
+/// Each chat doc holds participants + lastMessage metadata + per-user unread counts + typing state.
+/// Messages live in /chats/{chatId}/messages/{messageId} and carry a readBy list.
 class ChatService {
   ChatService._();
   static final ChatService instance = ChatService._();
@@ -17,8 +17,8 @@ class ChatService {
     return '${pair[0]}_${pair[1]}';
   }
 
-  /// Ensures the parent /chats/{chatId} doc exists with participants list
-  /// and a zeroed unreadCount map for both participants. Idempotent.
+  /// Ensures the parent /chats/{chatId} doc exists with participants list,
+  /// a zeroed unreadCount map, and a typing map. Idempotent.
   Future<String> ensureChat({
     required String currentUid,
     required String otherUid,
@@ -36,6 +36,10 @@ class ChatService {
           currentUid: 0,
           otherUid: 0,
         },
+        'typing': {
+          currentUid: false,
+          otherUid: false,
+        },
       });
     }
     return chatId;
@@ -43,6 +47,8 @@ class ChatService {
 
   /// Send a text message into a chat. Bumps the parent doc's
   /// lastMessage + updatedAt + increments the recipient's unreadCount.
+  /// Also seeds the message with an empty readBy (sender will be marked
+  /// implicitly via the senderId field — UI treats sender as having read).
   Future<void> sendMessage({
     required String chatId,
     required String senderId,
@@ -56,12 +62,15 @@ class ChatService {
       'senderId': senderId,
       'text': text,
       'timestamp': FieldValue.serverTimestamp(),
+      'readBy': <String>[senderId],
     });
 
     await _db.collection('chats').doc(chatId).update({
       'lastMessage': text,
       'updatedAt': FieldValue.serverTimestamp(),
       'unreadCount.$recipientId': FieldValue.increment(1),
+      // Sending implies done typing.
+      'typing.$senderId': false,
     });
   }
 
@@ -75,6 +84,11 @@ class ChatService {
         .snapshots();
   }
 
+  /// Stream a single chat doc — used for live typing + presence in headers.
+  Stream<DocumentSnapshot<Map<String, dynamic>>> getChatDoc(String chatId) {
+    return _db.collection('chats').doc(chatId).snapshots();
+  }
+
   /// Stream every chat that the current user participates in, newest first.
   Stream<QuerySnapshot<Map<String, dynamic>>> getUserChats(String uid) {
     return _db
@@ -85,7 +99,6 @@ class ChatService {
   }
 
   /// Resets the unread counter for [uid] in [chatId] to zero.
-  /// Called when the user opens a chat screen.
   Future<void> markChatRead({
     required String chatId,
     required String uid,
@@ -94,8 +107,19 @@ class ChatService {
       await _db.collection('chats').doc(chatId).update({
         'unreadCount.$uid': 0,
       });
-    } catch (_) {
-      // best-effort; ignore if doc doesn't exist or field is missing
-    }
+    } catch (_) {/* best-effort */}
+  }
+
+  /// Toggle typing indicator for [uid] in [chatId].
+  Future<void> setTyping({
+    required String chatId,
+    required String uid,
+    required bool typing,
+  }) async {
+    try {
+      await _db.collection('chats').doc(chatId).update({
+        'typing.$uid': typing,
+      });
+    } catch (_) {/* best-effort */}
   }
 }

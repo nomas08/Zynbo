@@ -28,7 +28,27 @@ Build **Zynbo**, a Flutter mobile chat application similar to WhatsApp. Uses Fir
 - `ZynboUser` model + all screens migrated to `name` / `photo` schema
 - Home profile card chip reactively flips Online ↔ Offline via Firestore stream
 
-### Iteration 4 (Jan 2026) — Polished Chats List ✅
+### Iteration 5 (Jan 2026) — Presence, Read Receipts, Typing ✅
+
+**Lifecycle-aware presence**
+- New `lib/services/presence_service.dart` with `goOnline` / `goOffline`
+- `ZynboApp` converted to `StatefulWidget` with `WidgetsBindingObserver`
+- On `AppLifecycleState.resumed` → presence: online; on paused/inactive/detached/hidden → offline
+- Also flips to online on `authStateChanges` user emission (handles cold-start race)
+
+**Read receipts (WhatsApp-style ✓/✓✓)**
+- Messages now include `readBy: [senderId, …]`; sender is implicitly read
+- `ChatScreen` keeps a local `_markedRead` cache; on every message stream tick, batch-updates `readBy: arrayUnion([currentUid])` for incoming unread messages (idempotent, no duplicate writes)
+- `buildMessage(..., readByOther: bool)` renders inside-bubble ticks: single faded check = sent; double lime check = read by other
+- Firestore rules tightened: messages allow update **only when `affectedKeys()` is exactly `['readBy']`** — no message tampering
+
+**Typing indicators**
+- `typing: {uid: bool}` map seeded in `ensureChat`
+- `ChatService.setTyping` toggles `typing.{uid}` on the chat doc
+- `ChatScreen` debounces: keystroke → typing=true; idle 3 s → typing=false; on send → immediate false; on dispose → cleanup
+- **Chat header** subtitle reactively shows `typing…` (italic, teal) when the other user is typing, else `Online` / `Offline`
+- **Chat list tile** shows `typing…` in place of the last-message preview while the other user is typing
+
 - **Renamed** `home_screen.dart` → `chats_list_screen.dart`; class `HomeScreen` → `ChatsListScreen`. `AuthGate` updated.
 - **WhatsApp-style list** with Zynbo aesthetic:
   - Branded header (Zynbo wordmark + current-user avatar that opens a profile bottom-sheet with sign-out)
@@ -64,10 +84,11 @@ Build **Zynbo**, a Flutter mobile chat application similar to WhatsApp. Uses Fir
 - Register SHA-1/SHA-256 in Firebase Console
 - Publish `firestore.rules` and enable Firestore + Google sign-in provider
 
-### P1
-- **Lifecycle-aware presence** — `WidgetsBindingObserver` to flip status on app background/resume + Firestore heartbeat (or migrate to Realtime DB `onDisconnect()` for true offline detection)
-- **Unread counts** — per-chat `unreadCount` map keyed by uid, decremented on screen entry
-- **Read receipts** — `readBy` array on messages
+### P1 (mostly done)
+- ✅ **Lifecycle-aware presence** — iteration 5 (RTDB `onDisconnect()` upgrade for true network-drop detection remains a P2 nice-to-have)
+- ✅ **Unread counts** — iteration 4
+- ✅ **Read receipts** — iteration 5
+- ✅ **Typing indicators** — iteration 5
 - **Typing indicators** — ephemeral `typing` field on chat doc
 
 ### P2
@@ -97,7 +118,8 @@ Build **Zynbo**, a Flutter mobile chat application similar to WhatsApp. Uses Fir
     │   └── message_model.dart      ← new in iteration 3
     ├── services/
     │   ├── auth_service.dart
-    │   └── chat_service.dart       ← new in iteration 3
+    │   ├── chat_service.dart
+    │   └── presence_service.dart     ← new in iteration 5
     └── screens/
         ├── login_screen.dart
         ├── profile_setup_screen.dart

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
@@ -34,6 +36,13 @@ class _ChatScreenState extends State<ChatScreen> {
   final ScrollController _scroll = ScrollController();
   bool _sending = false;
 
+  // Read-receipt bookkeeping
+  final Set<String> _markedRead = <String>{};
+
+  // Typing-indicator bookkeeping
+  Timer? _typingDebounce;
+  bool _isTyping = false;
+
   @override
   void initState() {
     super.initState();
@@ -42,13 +51,56 @@ class _ChatScreenState extends State<ChatScreen> {
       chatId: widget.chatId,
       uid: widget.currentUid,
     );
+    _input.addListener(_onInputChanged);
   }
 
   @override
   void dispose() {
+    _typingDebounce?.cancel();
+    // Make sure we don't leave a stale "typing…" flag behind.
+    if (_isTyping) {
+      ChatService.instance.setTyping(
+        chatId: widget.chatId,
+        uid: widget.currentUid,
+        typing: false,
+      );
+    }
+    _input.removeListener(_onInputChanged);
     _input.dispose();
     _scroll.dispose();
     super.dispose();
+  }
+
+  void _onInputChanged() {
+    final hasText = _input.text.trim().isNotEmpty;
+    if (hasText && !_isTyping) {
+      _isTyping = true;
+      ChatService.instance.setTyping(
+        chatId: widget.chatId,
+        uid: widget.currentUid,
+        typing: true,
+      );
+    }
+    _typingDebounce?.cancel();
+    _typingDebounce = Timer(const Duration(seconds: 3), () {
+      if (_isTyping) {
+        _isTyping = false;
+        ChatService.instance.setTyping(
+          chatId: widget.chatId,
+          uid: widget.currentUid,
+          typing: false,
+        );
+      }
+    });
+    if (!hasText && _isTyping) {
+      _typingDebounce?.cancel();
+      _isTyping = false;
+      ChatService.instance.setTyping(
+        chatId: widget.chatId,
+        uid: widget.currentUid,
+        typing: false,
+      );
+    }
   }
 
   Future<void> _send() async {
@@ -56,6 +108,9 @@ class _ChatScreenState extends State<ChatScreen> {
     if (text.isEmpty || _sending) return;
     setState(() => _sending = true);
     _input.clear();
+    // Sending implies done typing; suppress further writes.
+    _typingDebounce?.cancel();
+    _isTyping = false;
     try {
       await ChatService.instance.sendMessage(
         chatId: widget.chatId,
@@ -63,7 +118,6 @@ class _ChatScreenState extends State<ChatScreen> {
         recipientId: widget.otherUid,
         text: text,
       );
-      // scroll to newest
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_scroll.hasClients) {
           _scroll.animateTo(
@@ -83,61 +137,48 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  /// Side-effect: mark incoming unread messages as read by current user.
+  /// Idempotent — we cache marked IDs locally.
+  void _markVisibleMessagesRead(
+      List<QueryDocumentSnapshot<Map<String, dynamic>>> docs) {
+    final batch = FirebaseFirestore.instance.batch();
+    var any = false;
+    for (final doc in docs) {
+      if (_markedRead.contains(doc.id)) continue;
+      final data = doc.data();
+      if (data['senderId'] == widget.currentUid) {
+        _markedRead.add(doc.id);
+        continue;
+      }
+      final readBy = (data['readBy'] as List?)?.cast<String>() ?? const [];
+      if (readBy.contains(widget.currentUid)) {
+        _markedRead.add(doc.id);
+        continue;
+      }
+      batch.update(doc.reference, {
+        'readBy': FieldValue.arrayUnion([widget.currentUid]),
+      });
+      _markedRead.add(doc.id);
+      any = true;
+    }
+    if (any) {
+      // Fire-and-forget; rule allows participants to update only readBy.
+      batch.commit().catchError((_) {});
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: ZynboApp.brandCream,
       appBar: AppBar(
         titleSpacing: 0,
-        title: Row(
-          children: [
-            CircleAvatar(
-              radius: 18,
-              backgroundColor: ZynboApp.brandTeal,
-              child: ClipOval(
-                child: (widget.otherPhoto != null &&
-                        widget.otherPhoto!.isNotEmpty)
-                    ? CachedNetworkImage(
-                        imageUrl: widget.otherPhoto!,
-                        fit: BoxFit.cover,
-                        width: 36,
-                        height: 36,
-                        errorWidget: (_, __, ___) =>
-                            const Icon(Icons.person, color: Colors.white, size: 20),
-                      )
-                    : const Icon(Icons.person,
-                        color: Colors.white, size: 20),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    widget.otherName,
-                    style: GoogleFonts.spaceGrotesk(
-                      color: ZynboApp.brandInk,
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: -0.3,
-                    ),
-                  ),
-                  Text(
-                    widget.otherStatus == 'online' ? 'Online' : 'Offline',
-                    style: GoogleFonts.spaceGrotesk(
-                      fontSize: 11,
-                      color: widget.otherStatus == 'online'
-                          ? Colors.green.shade700
-                          : ZynboApp.brandInk.withOpacity(0.45),
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
+        title: _ChatHeader(
+          chatId: widget.chatId,
+          otherUid: widget.otherUid,
+          otherName: widget.otherName,
+          otherPhoto: widget.otherPhoto,
+          initialStatus: widget.otherStatus,
         ),
       ),
       body: Column(
@@ -155,6 +196,11 @@ class _ChatScreenState extends State<ChatScreen> {
                 }
 
                 final docs = snapshot.data!.docs;
+                // Mark anything we don't own that we haven't already marked.
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  _markVisibleMessagesRead(docs);
+                });
+
                 if (docs.isEmpty) {
                   return _EmptyConvo(name: widget.otherName);
                 }
@@ -167,10 +213,13 @@ class _ChatScreenState extends State<ChatScreen> {
                   itemBuilder: (context, index) {
                     final data = docs[index];
                     final isMe = data['senderId'] == widget.currentUid;
-
-                    // Day divider when the day changes between consecutive messages.
-                    Widget? divider;
                     final ts = (data['timestamp'] as Timestamp?)?.toDate();
+                    final readBy =
+                        (data['readBy'] as List?)?.cast<String>() ??
+                            const [];
+                    final readByOther = readBy.contains(widget.otherUid);
+
+                    Widget? divider;
                     if (index == 0 ||
                         !_sameDay(
                             (docs[index - 1]['timestamp'] as Timestamp?)
@@ -179,8 +228,12 @@ class _ChatScreenState extends State<ChatScreen> {
                       if (ts != null) divider = _DayDivider(date: ts);
                     }
 
-                    final bubble = buildMessage(data['text'], isMe,
-                        timestamp: ts);
+                    final bubble = buildMessage(
+                      data['text'],
+                      isMe,
+                      timestamp: ts,
+                      readByOther: readByOther,
+                    );
 
                     if (divider == null) return bubble;
                     return Column(
@@ -208,10 +261,124 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 }
 
+// ──────────────────────── Reactive header ────────────────────────
+
+class _ChatHeader extends StatelessWidget {
+  final String chatId;
+  final String otherUid;
+  final String otherName;
+  final String? otherPhoto;
+  final String initialStatus;
+
+  const _ChatHeader({
+    required this.chatId,
+    required this.otherUid,
+    required this.otherName,
+    required this.otherPhoto,
+    required this.initialStatus,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        CircleAvatar(
+          radius: 18,
+          backgroundColor: ZynboApp.brandTeal,
+          child: ClipOval(
+            child: (otherPhoto != null && otherPhoto!.isNotEmpty)
+                ? CachedNetworkImage(
+                    imageUrl: otherPhoto!,
+                    fit: BoxFit.cover,
+                    width: 36,
+                    height: 36,
+                    errorWidget: (_, __, ___) => const Icon(Icons.person,
+                        color: Colors.white, size: 20),
+                  )
+                : const Icon(Icons.person,
+                    color: Colors.white, size: 20),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+            stream: ChatService.instance.getChatDoc(chatId),
+            builder: (context, chatSnap) {
+              final typingMap =
+                  (chatSnap.data?.data()?['typing'] as Map?)?.cast<String, dynamic>() ?? {};
+              final otherTyping = typingMap[otherUid] == true;
+
+              return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                stream: FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(otherUid)
+                    .snapshots(),
+                builder: (context, userSnap) {
+                  final status =
+                      (userSnap.data?.data()?['status'] as String?) ??
+                          initialStatus;
+
+                  String subtitle;
+                  Color subtitleColor;
+                  if (otherTyping) {
+                    subtitle = 'typing…';
+                    subtitleColor = ZynboApp.brandTeal;
+                  } else if (status == 'online') {
+                    subtitle = 'Online';
+                    subtitleColor = Colors.green.shade700;
+                  } else {
+                    subtitle = 'Offline';
+                    subtitleColor = ZynboApp.brandInk.withOpacity(0.45);
+                  }
+
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        otherName,
+                        style: GoogleFonts.spaceGrotesk(
+                          color: ZynboApp.brandInk,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.3,
+                        ),
+                      ),
+                      Text(
+                        subtitle,
+                        style: GoogleFonts.spaceGrotesk(
+                          fontSize: 11,
+                          color: subtitleColor,
+                          fontWeight: FontWeight.w600,
+                          fontStyle:
+                              otherTyping ? FontStyle.italic : FontStyle.normal,
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ──────────────────────── Bubble + checks ────────────────────────
+
 /// Builds a single chat bubble.
-/// Signature mirrors the canonical `buildMessage(text, isMe)` pattern;
-/// [timestamp] is optional and renders a small time label inside the bubble.
-Widget buildMessage(String text, bool isMe, {DateTime? timestamp}) {
+/// Signature mirrors the canonical `buildMessage(text, isMe)` pattern.
+/// For outgoing messages, [readByOther] drives the check-mark state:
+///   • false → single grey check (sent)
+///   • true  → double lime check on teal (read)
+Widget buildMessage(
+  String text,
+  bool isMe, {
+  DateTime? timestamp,
+  bool readByOther = false,
+}) {
   return Builder(
     builder: (context) {
       final bg = isMe ? ZynboApp.brandTeal : Colors.white;
@@ -265,15 +432,24 @@ Widget buildMessage(String text, bool isMe, {DateTime? timestamp}) {
                 ),
               ),
               const SizedBox(height: 2),
-              Text(
-                timestamp == null
-                    ? 'sending…'
-                    : DateFormat('HH:mm').format(timestamp),
-                style: GoogleFonts.spaceGrotesk(
-                  color: fg.withOpacity(0.55),
-                  fontSize: 10,
-                  fontWeight: FontWeight.w500,
-                ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    timestamp == null
+                        ? 'sending…'
+                        : DateFormat('HH:mm').format(timestamp),
+                    style: GoogleFonts.spaceGrotesk(
+                      color: fg.withOpacity(0.55),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  if (isMe) ...[
+                    const SizedBox(width: 4),
+                    _ReadTicks(read: readByOther),
+                  ],
+                ],
               ),
             ],
           ),
@@ -282,6 +458,37 @@ Widget buildMessage(String text, bool isMe, {DateTime? timestamp}) {
     },
   );
 }
+
+class _ReadTicks extends StatelessWidget {
+  final bool read;
+  const _ReadTicks({required this.read});
+
+  @override
+  Widget build(BuildContext context) {
+    final tickColor =
+        read ? ZynboApp.brandLime : Colors.white.withOpacity(0.55);
+    return SizedBox(
+      width: 16,
+      height: 12,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Positioned(
+            left: read ? 0 : 2,
+            child: Icon(Icons.check_rounded, size: 12, color: tickColor),
+          ),
+          if (read)
+            Positioned(
+              left: 5,
+              child: Icon(Icons.check_rounded, size: 12, color: tickColor),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+// ──────────────────────── Misc ────────────────────────
 
 class _DayDivider extends StatelessWidget {
   final DateTime date;
