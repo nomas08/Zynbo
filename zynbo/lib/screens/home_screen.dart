@@ -3,9 +3,13 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
 
 import '../main.dart';
 import '../services/auth_service.dart';
+import '../services/chat_service.dart';
+import 'chat_screen.dart';
+import 'new_chat_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -13,6 +17,7 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
+    final uid = user?.uid ?? '';
 
     return Scaffold(
       appBar: AppBar(
@@ -20,7 +25,11 @@ class HomeScreen extends StatelessWidget {
         actions: [
           IconButton(
             icon: const Icon(Icons.search_rounded),
-            onPressed: () {},
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const NewChatScreen()),
+              );
+            },
           ),
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert_rounded),
@@ -37,12 +46,11 @@ class HomeScreen extends StatelessWidget {
       ),
       body: Column(
         children: [
-          _ProfileCard(uid: user?.uid ?? ''),
-          const SizedBox(height: 8),
+          _ProfileCard(uid: uid),
+          const SizedBox(height: 4),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+            padding: const EdgeInsets.fromLTRB(24, 8, 24, 8),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
                   'Chats',
@@ -53,26 +61,26 @@ class HomeScreen extends StatelessWidget {
                     color: ZynboApp.brandInk,
                   ),
                 ),
-                Text(
-                  'Coming soon',
-                  style: GoogleFonts.spaceGrotesk(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: ZynboApp.brandInk.withOpacity(0.4),
-                  ),
-                ),
               ],
             ),
           ),
-          const Expanded(child: _EmptyChats()),
+          Expanded(child: _ChatList(currentUid: uid)),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: FloatingActionButton.extended(
         backgroundColor: ZynboApp.brandLime,
         foregroundColor: ZynboApp.brandInk,
         elevation: 0,
-        onPressed: () {},
-        child: const Icon(Icons.chat_rounded),
+        onPressed: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const NewChatScreen()),
+          );
+        },
+        icon: const Icon(Icons.chat_rounded),
+        label: Text(
+          'New chat',
+          style: GoogleFonts.spaceGrotesk(fontWeight: FontWeight.w700),
+        ),
       ),
     );
   }
@@ -177,6 +185,199 @@ class _ProfileCard extends StatelessWidget {
   }
 }
 
+class _ChatList extends StatelessWidget {
+  final String currentUid;
+  const _ChatList({required this.currentUid});
+
+  @override
+  Widget build(BuildContext context) {
+    if (currentUid.isEmpty) return const SizedBox.shrink();
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: ChatService.instance.getUserChats(currentUid),
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const Center(
+            child: CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation(ZynboApp.brandTeal),
+            ),
+          );
+        }
+        final docs = snap.data?.docs ?? [];
+        if (docs.isEmpty) return const _EmptyChats();
+
+        return ListView.builder(
+          padding: const EdgeInsets.fromLTRB(12, 4, 12, 96),
+          itemCount: docs.length,
+          itemBuilder: (_, i) {
+            final data = docs[i].data();
+            final participants =
+                (data['participants'] as List?)?.cast<String>() ?? [];
+            final otherUid = participants.firstWhere(
+              (p) => p != currentUid,
+              orElse: () => '',
+            );
+            if (otherUid.isEmpty) return const SizedBox.shrink();
+
+            return _ChatTile(
+              chatId: docs[i].id,
+              currentUid: currentUid,
+              otherUid: otherUid,
+              lastMessage: (data['lastMessage'] as String?) ?? '',
+              updatedAt: (data['updatedAt'] as Timestamp?)?.toDate(),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _ChatTile extends StatelessWidget {
+  final String chatId;
+  final String currentUid;
+  final String otherUid;
+  final String lastMessage;
+  final DateTime? updatedAt;
+
+  const _ChatTile({
+    required this.chatId,
+    required this.currentUid,
+    required this.otherUid,
+    required this.lastMessage,
+    required this.updatedAt,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection('users')
+          .doc(otherUid)
+          .snapshots(),
+      builder: (context, snap) {
+        final u = snap.data?.data();
+        final name = (u?['name'] as String?) ?? 'User';
+        final photo = u?['photo'] as String?;
+        final status = (u?['status'] as String?) ?? 'offline';
+
+        return Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => ChatScreen(
+                    chatId: chatId,
+                    currentUid: currentUid,
+                    otherUid: otherUid,
+                    otherName: name,
+                    otherPhoto: photo,
+                    otherStatus: status,
+                  ),
+                ),
+              );
+            },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 12, vertical: 10),
+              child: Row(
+                children: [
+                  Stack(
+                    children: [
+                      CircleAvatar(
+                        radius: 26,
+                        backgroundColor: ZynboApp.brandTeal,
+                        child: ClipOval(
+                          child: (photo != null && photo.isNotEmpty)
+                              ? CachedNetworkImage(
+                                  imageUrl: photo,
+                                  width: 52,
+                                  height: 52,
+                                  fit: BoxFit.cover,
+                                  errorWidget: (_, __, ___) =>
+                                      const Icon(Icons.person,
+                                          color: Colors.white),
+                                )
+                              : const Icon(Icons.person,
+                                  color: Colors.white),
+                        ),
+                      ),
+                      if (status == 'online')
+                        Positioned(
+                          right: 0,
+                          bottom: 0,
+                          child: Container(
+                            width: 13,
+                            height: 13,
+                            decoration: BoxDecoration(
+                              color: Colors.green.shade400,
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                  color: ZynboApp.brandCream, width: 2),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          name,
+                          style: GoogleFonts.spaceGrotesk(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: ZynboApp.brandInk,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          lastMessage.isEmpty
+                              ? 'Tap to start chatting'
+                              : lastMessage,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.spaceGrotesk(
+                            fontSize: 13,
+                            color: ZynboApp.brandInk.withOpacity(0.55),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (updatedAt != null)
+                    Text(
+                      _formatStamp(updatedAt!),
+                      style: GoogleFonts.spaceGrotesk(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: ZynboApp.brandInk.withOpacity(0.45),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  String _formatStamp(DateTime t) {
+    final now = DateTime.now();
+    if (t.year == now.year && t.month == now.month && t.day == now.day) {
+      return DateFormat('HH:mm').format(t);
+    }
+    if (now.difference(t).inDays < 7) {
+      return DateFormat('EEE').format(t); // Mon, Tue…
+    }
+    return DateFormat('d MMM').format(t);
+  }
+}
+
 class _EmptyChats extends StatelessWidget {
   const _EmptyChats();
 
@@ -210,7 +411,7 @@ class _EmptyChats extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             Text(
-              'Once you start chatting, your conversations will appear here.',
+              'Tap "New chat" to find someone and say hello.',
               textAlign: TextAlign.center,
               style: GoogleFonts.spaceGrotesk(
                 fontSize: 14,
