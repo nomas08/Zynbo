@@ -28,7 +28,20 @@ Build **Zynbo**, a Flutter mobile chat application similar to WhatsApp. Uses Fir
 - `ZynboUser` model + all screens migrated to `name` / `photo` schema
 - Home profile card chip reactively flips Online ↔ Offline via Firestore stream
 
-### Iteration 3 (Jan 2026) — 1:1 Chat MVP ✅
+### Iteration 4 (Jan 2026) — Polished Chats List ✅
+- **Renamed** `home_screen.dart` → `chats_list_screen.dart`; class `HomeScreen` → `ChatsListScreen`. `AuthGate` updated.
+- **WhatsApp-style list** with Zynbo aesthetic:
+  - Branded header (Zynbo wordmark + current-user avatar that opens a profile bottom-sheet with sign-out)
+  - **Search bar** filters tiles by other-user name OR last message
+  - Tiles: 56px avatar (initials fallback in lime-on-teal), green online dot, name, smart timestamp, last-message preview, italic placeholder when empty, "online" lime pill
+  - Smart timestamps: HH:mm (today), "Yesterday", weekday (within 7d), else "d MMM"
+- **Unread badge** (P1 → done):
+  - `unreadCount: {uid: int}` map added to chat docs in `ensureChat`
+  - `sendMessage(recipientId:)` now does `FieldValue.increment(1)` on `unreadCount.{recipientId}`
+  - `ChatScreen.initState` calls `ChatService.markChatRead(chatId, uid)` to zero the counter
+  - Tile shows pill badge (teal bg, lime text, "99+" cap), name + preview + timestamp bold/teal when unread
+
+
 - **`ChatService`** singleton with deterministic `chatIdFor(uidA, uidB)`, `ensureChat`, `sendMessage` (exact user snippet), `getMessages`, `getUserChats`
 - **`Message`** model with `Timestamp` ↔ `DateTime` mapping
 - **`ChatScreen`** — full conversation UI:

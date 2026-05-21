@@ -35,6 +35,16 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _sending = false;
 
   @override
+  void initState() {
+    super.initState();
+    // Clear unread badge for this chat as soon as the user opens it.
+    ChatService.instance.markChatRead(
+      chatId: widget.chatId,
+      uid: widget.currentUid,
+    );
+  }
+
+  @override
   void dispose() {
     _input.dispose();
     _scroll.dispose();
@@ -50,6 +60,7 @@ class _ChatScreenState extends State<ChatScreen> {
       await ChatService.instance.sendMessage(
         chatId: widget.chatId,
         senderId: widget.currentUid,
+        recipientId: widget.otherUid,
         text: text,
       );
       // scroll to newest

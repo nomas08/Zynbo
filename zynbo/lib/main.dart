@@ -6,7 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import 'firebase_options.dart';
 import 'screens/login_screen.dart';
-import 'screens/home_screen.dart';
+import 'screens/chats_list_screen.dart';
 import 'screens/profile_setup_screen.dart';
 import 'services/auth_service.dart';
 
@@ -129,7 +129,7 @@ class AuthGate extends StatelessWidget {
             if (!hasProfile) {
               return const ProfileSetupScreen();
             }
-            return const HomeScreen();
+            return const ChatsListScreen();
           },
         );
       },

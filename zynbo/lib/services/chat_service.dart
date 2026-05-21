@@ -3,7 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 /// All chat read/write logic lives here.
 /// Chats are 1:1 with deterministic IDs derived from sorted UID pairs:
 ///   chatId = "uidA_uidB" (lexicographically sorted)
-/// Each chat doc holds participants + lastMessage metadata.
+/// Each chat doc holds participants + lastMessage metadata + per-user unread counts.
 /// Messages live in /chats/{chatId}/messages/{messageId}.
 class ChatService {
   ChatService._();
@@ -17,8 +17,8 @@ class ChatService {
     return '${pair[0]}_${pair[1]}';
   }
 
-  /// Ensures the parent /chats/{chatId} doc exists with participants list.
-  /// Idempotent — safe to call before every send.
+  /// Ensures the parent /chats/{chatId} doc exists with participants list
+  /// and a zeroed unreadCount map for both participants. Idempotent.
   Future<String> ensureChat({
     required String currentUid,
     required String otherUid,
@@ -32,16 +32,21 @@ class ChatService {
         'lastMessage': '',
         'updatedAt': FieldValue.serverTimestamp(),
         'createdAt': FieldValue.serverTimestamp(),
+        'unreadCount': {
+          currentUid: 0,
+          otherUid: 0,
+        },
       });
     }
     return chatId;
   }
 
-  /// Send a text message into a chat. Also bumps the parent doc's
-  /// lastMessage + updatedAt so the chat list can sort by recency.
+  /// Send a text message into a chat. Bumps the parent doc's
+  /// lastMessage + updatedAt + increments the recipient's unreadCount.
   Future<void> sendMessage({
     required String chatId,
     required String senderId,
+    required String recipientId,
     required String text,
   }) async {
     final messagesRef =
@@ -56,6 +61,7 @@ class ChatService {
     await _db.collection('chats').doc(chatId).update({
       'lastMessage': text,
       'updatedAt': FieldValue.serverTimestamp(),
+      'unreadCount.$recipientId': FieldValue.increment(1),
     });
   }
 
@@ -76,5 +82,20 @@ class ChatService {
         .where('participants', arrayContains: uid)
         .orderBy('updatedAt', descending: true)
         .snapshots();
+  }
+
+  /// Resets the unread counter for [uid] in [chatId] to zero.
+  /// Called when the user opens a chat screen.
+  Future<void> markChatRead({
+    required String chatId,
+    required String uid,
+  }) async {
+    try {
+      await _db.collection('chats').doc(chatId).update({
+        'unreadCount.$uid': 0,
+      });
+    } catch (_) {
+      // best-effort; ignore if doc doesn't exist or field is missing
+    }
   }
 }
