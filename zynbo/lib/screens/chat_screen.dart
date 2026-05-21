@@ -5,7 +5,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
 import '../main.dart';
-import '../models/message_model.dart';
 import '../services/chat_service.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -135,36 +134,47 @@ class _ChatScreenState extends State<ChatScreen> {
           Expanded(
             child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
               stream: ChatService.instance.getMessages(widget.chatId),
-              builder: (context, snap) {
-                if (snap.connectionState == ConnectionState.waiting) {
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) {
                   return const Center(
                     child: CircularProgressIndicator(
                       valueColor: AlwaysStoppedAnimation(ZynboApp.brandTeal),
                     ),
                   );
                 }
-                final docs = snap.data?.docs ?? [];
+
+                final docs = snapshot.data!.docs;
                 if (docs.isEmpty) {
                   return _EmptyConvo(name: widget.otherName);
                 }
-                final messages = docs.map(Message.fromDoc).toList();
+
                 return ListView.builder(
                   controller: _scroll,
                   padding: const EdgeInsets.symmetric(
                       horizontal: 16, vertical: 16),
-                  itemCount: messages.length,
-                  itemBuilder: (_, i) {
-                    final m = messages[i];
-                    final mine = m.senderId == widget.currentUid;
-                    final showStamp = i == 0 ||
-                        !_sameDay(messages[i - 1].timestamp, m.timestamp);
+                  itemCount: docs.length,
+                  itemBuilder: (context, index) {
+                    final data = docs[index];
+                    final isMe = data['senderId'] == widget.currentUid;
+
+                    // Day divider when the day changes between consecutive messages.
+                    Widget? divider;
+                    final ts = (data['timestamp'] as Timestamp?)?.toDate();
+                    if (index == 0 ||
+                        !_sameDay(
+                            (docs[index - 1]['timestamp'] as Timestamp?)
+                                ?.toDate(),
+                            ts)) {
+                      if (ts != null) divider = _DayDivider(date: ts);
+                    }
+
+                    final bubble = buildMessage(data['text'], isMe,
+                        timestamp: ts);
+
+                    if (divider == null) return bubble;
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        if (showStamp && m.timestamp != null)
-                          _DayDivider(date: m.timestamp!),
-                        _Bubble(message: m, mine: mine),
-                      ],
+                      children: [divider, bubble],
                     );
                   },
                 );
@@ -187,79 +197,79 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 }
 
-class _Bubble extends StatelessWidget {
-  final Message message;
-  final bool mine;
-  const _Bubble({required this.message, required this.mine});
+/// Builds a single chat bubble.
+/// Signature mirrors the canonical `buildMessage(text, isMe)` pattern;
+/// [timestamp] is optional and renders a small time label inside the bubble.
+Widget buildMessage(String text, bool isMe, {DateTime? timestamp}) {
+  return Builder(
+    builder: (context) {
+      final bg = isMe ? ZynboApp.brandTeal : Colors.white;
+      final fg = isMe ? Colors.white : ZynboApp.brandInk;
+      final radius = isMe
+          ? const BorderRadius.only(
+              topLeft: Radius.circular(18),
+              topRight: Radius.circular(18),
+              bottomLeft: Radius.circular(18),
+              bottomRight: Radius.circular(4),
+            )
+          : const BorderRadius.only(
+              topLeft: Radius.circular(18),
+              topRight: Radius.circular(18),
+              bottomLeft: Radius.circular(4),
+              bottomRight: Radius.circular(18),
+            );
 
-  @override
-  Widget build(BuildContext context) {
-    final bg = mine ? ZynboApp.brandTeal : Colors.white;
-    final fg = mine ? Colors.white : ZynboApp.brandInk;
-    final radius = mine
-        ? const BorderRadius.only(
-            topLeft: Radius.circular(18),
-            topRight: Radius.circular(18),
-            bottomLeft: Radius.circular(18),
-            bottomRight: Radius.circular(4),
-          )
-        : const BorderRadius.only(
-            topLeft: Radius.circular(18),
-            topRight: Radius.circular(18),
-            bottomLeft: Radius.circular(4),
-            bottomRight: Radius.circular(18),
-          );
-
-    return Align(
-      alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.76,
-        ),
-        margin: const EdgeInsets.symmetric(vertical: 3),
-        padding:
-            const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: radius,
-          boxShadow: mine
-              ? null
-              : [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.04),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              message.text,
-              style: GoogleFonts.spaceGrotesk(
-                color: fg,
-                fontSize: 15,
-                height: 1.35,
+      return Align(
+        alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+        child: Container(
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.of(context).size.width * 0.76,
+          ),
+          margin: const EdgeInsets.symmetric(vertical: 3),
+          padding:
+              const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: radius,
+            boxShadow: isMe
+                ? null
+                : [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.04),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                text,
+                style: GoogleFonts.spaceGrotesk(
+                  color: fg,
+                  fontSize: 15,
+                  height: 1.35,
+                ),
               ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              message.timestamp == null
-                  ? 'sending…'
-                  : DateFormat('HH:mm').format(message.timestamp!),
-              style: GoogleFonts.spaceGrotesk(
-                color: fg.withOpacity(0.55),
-                fontSize: 10,
-                fontWeight: FontWeight.w500,
+              const SizedBox(height: 2),
+              Text(
+                timestamp == null
+                    ? 'sending…'
+                    : DateFormat('HH:mm').format(timestamp),
+                style: GoogleFonts.spaceGrotesk(
+                  color: fg.withOpacity(0.55),
+                  fontSize: 10,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
-      ),
-    );
-  }
+      );
+    },
+  );
 }
 
 class _DayDivider extends StatelessWidget {
