@@ -89,9 +89,10 @@ class _ProfileCard extends StatelessWidget {
       stream: FirebaseFirestore.instance.collection('users').doc(uid).snapshots(),
       builder: (context, snap) {
         final data = snap.data?.data();
-        final name = data?['displayName'] as String? ?? '';
+        final name = data?['name'] as String? ?? '';
         final about = data?['about'] as String? ?? '';
-        final photoUrl = data?['photoUrl'] as String?;
+        final photoUrl = data?['photo'] as String?;
+        final status = (data?['status'] as String?) ?? 'offline';
 
         return Container(
           margin: const EdgeInsets.fromLTRB(20, 8, 20, 8),
@@ -152,13 +153,17 @@ class _ProfileCard extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(
                     horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
-                  color: ZynboApp.brandLime,
+                  color: status == 'online'
+                      ? ZynboApp.brandLime
+                      : Colors.white24,
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
-                  'Online',
+                  status == 'online' ? 'Online' : 'Offline',
                   style: GoogleFonts.spaceGrotesk(
-                    color: ZynboApp.brandInk,
+                    color: status == 'online'
+                        ? ZynboApp.brandInk
+                        : Colors.white,
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
                   ),

@@ -45,12 +45,12 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     try {
       await AuthService.instance.saveProfile(
         uid: user.uid,
-        displayName: _nameCtrl.text.trim(),
+        name: _nameCtrl.text.trim(),
         about: _aboutCtrl.text.trim(),
         phoneNumber: _phoneCtrl.text.trim().isEmpty
             ? null
             : _phoneCtrl.text.trim(),
-        photoUrl: user.photoURL,
+        photo: user.photoURL,
       );
     } catch (e) {
       if (!mounted) return;
