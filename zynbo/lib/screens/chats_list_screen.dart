@@ -241,11 +241,18 @@ class _ChatList extends StatelessWidget {
             final data = docs[i].data();
             final participants =
                 (data['participants'] as List?)?.cast<String>() ?? [];
-            final otherUid = participants.firstWhere(
-              (p) => p != currentUid,
-              orElse: () => '',
-            );
-            if (otherUid.isEmpty) return const SizedBox.shrink();
+            final type = (data['type'] as String?) ?? 'direct';
+            final isGroup = type == 'group';
+
+            final otherUid = isGroup
+                ? ''
+                : participants.firstWhere(
+                    (p) => p != currentUid,
+                    orElse: () => '',
+                  );
+            if (!isGroup && otherUid.isEmpty) {
+              return const SizedBox.shrink();
+            }
 
             final unreadMap =
                 (data['unreadCount'] as Map?)?.cast<String, dynamic>() ?? {};
@@ -253,13 +260,22 @@ class _ChatList extends StatelessWidget {
 
             final typingMap =
                 (data['typing'] as Map?)?.cast<String, dynamic>() ?? {};
-            final otherTyping = typingMap[otherUid] == true;
+            final otherTyping = isGroup
+                ? typingMap.entries
+                    .any((e) => e.key != currentUid && e.value == true)
+                : (typingMap[otherUid] == true);
 
             return _ChatTile(
               chatId: docs[i].id,
               currentUid: currentUid,
               otherUid: otherUid,
+              isGroup: isGroup,
+              groupName: data['groupName'] as String?,
+              groupPhoto: data['groupPhoto'] as String?,
+              memberCount: participants.length,
               lastMessage: (data['lastMessage'] as String?) ?? '',
+              lastMessageType:
+                  (data['lastMessageType'] as String?) ?? 'text',
               updatedAt: (data['updatedAt'] as Timestamp?)?.toDate(),
               unread: unread,
               otherTyping: otherTyping,
@@ -275,8 +291,13 @@ class _ChatList extends StatelessWidget {
 class _ChatTile extends StatelessWidget {
   final String chatId;
   final String currentUid;
-  final String otherUid;
+  final String otherUid; // empty for groups
+  final bool isGroup;
+  final String? groupName;
+  final String? groupPhoto;
+  final int memberCount;
   final String lastMessage;
+  final String lastMessageType; // 'text' | 'image' | 'voice'
   final DateTime? updatedAt;
   final int unread;
   final bool otherTyping;
@@ -286,7 +307,12 @@ class _ChatTile extends StatelessWidget {
     required this.chatId,
     required this.currentUid,
     required this.otherUid,
+    required this.isGroup,
+    required this.groupName,
+    required this.groupPhoto,
+    required this.memberCount,
     required this.lastMessage,
+    required this.lastMessageType,
     required this.updatedAt,
     required this.unread,
     required this.otherTyping,
@@ -295,6 +321,15 @@ class _ChatTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (isGroup) {
+      return _buildTile(
+        context,
+        name: groupName ?? 'Group',
+        photo: groupPhoto,
+        status: 'group',
+        subtitleSuffix: '$memberCount members',
+      );
+    }
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
       stream: FirebaseFirestore.instance
           .collection('users')
@@ -305,59 +340,84 @@ class _ChatTile extends StatelessWidget {
         final name = (u?['name'] as String?) ?? 'User';
         final photo = u?['photo'] as String?;
         final status = (u?['status'] as String?) ?? 'offline';
-        final isOnline = status == 'online';
-        final hasUnread = unread > 0;
+        return _buildTile(
+          context,
+          name: name,
+          photo: photo,
+          status: status,
+          subtitleSuffix: null,
+        );
+      },
+    );
+  }
 
-        if (query.isNotEmpty &&
-            !name.toLowerCase().contains(query) &&
-            !lastMessage.toLowerCase().contains(query)) {
-          return const SizedBox.shrink();
-        }
+  Widget _buildTile(
+    BuildContext context, {
+    required String name,
+    required String? photo,
+    required String status,
+    required String? subtitleSuffix,
+  }) {
+    final isOnline = status == 'online';
+    final hasUnread = unread > 0;
 
-        return Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => ChatScreen(
-                    chatId: chatId,
-                    currentUid: currentUid,
-                    otherUid: otherUid,
-                    otherName: name,
-                    otherPhoto: photo,
-                    otherStatus: status,
-                  ),
-                ),
-              );
-            },
-            child: Padding(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 16, vertical: 12),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
+    if (query.isNotEmpty &&
+        !name.toLowerCase().contains(query) &&
+        !lastMessage.toLowerCase().contains(query)) {
+      return const SizedBox.shrink();
+    }
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => ChatScreen(
+                chatId: chatId,
+                currentUid: currentUid,
+                otherUid: otherUid,
+                otherName: name,
+                otherPhoto: photo,
+                otherStatus: status,
+                isGroup: isGroup,
+              ),
+            ),
+          );
+        },
+        child: Padding(
+          padding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Stack(
                 children: [
-                  Stack(
-                    children: [
-                      Container(
-                        width: 56,
-                        height: 56,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: ZynboApp.brandTeal,
-                          border: Border.all(
-                              color: ZynboApp.brandInk.withOpacity(0.05),
-                              width: 1),
-                        ),
-                        clipBehavior: Clip.antiAlias,
-                        child: (photo != null && photo.isNotEmpty)
-                            ? CachedNetworkImage(
-                                imageUrl: photo,
-                                fit: BoxFit.cover,
-                                errorWidget: (_, __, ___) => const Icon(
-                                    Icons.person,
-                                    color: Colors.white),
-                              )
+                  Container(
+                    width: 56,
+                    height: 56,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: ZynboApp.brandTeal,
+                      border: Border.all(
+                          color: ZynboApp.brandInk.withOpacity(0.05),
+                          width: 1),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: (photo != null && photo.isNotEmpty)
+                        ? CachedNetworkImage(
+                            imageUrl: photo,
+                            fit: BoxFit.cover,
+                            errorWidget: (_, __, ___) => Icon(
+                              isGroup
+                                  ? Icons.group_rounded
+                                  : Icons.person,
+                              color: Colors.white,
+                            ),
+                          )
+                        : (isGroup
+                            ? const Icon(Icons.group_rounded,
+                                color: Colors.white, size: 28)
                             : Center(
                                 child: Text(
                                   _initials(name),
@@ -367,130 +427,148 @@ class _ChatTile extends StatelessWidget {
                                     fontWeight: FontWeight.w800,
                                   ),
                                 ),
-                              ),
+                              )),
+                  ),
+                  if (!isGroup && isOnline)
+                    Positioned(
+                      right: 0,
+                      bottom: 0,
+                      child: Container(
+                        width: 16,
+                        height: 16,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF34D399),
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                              color: ZynboApp.brandCream, width: 2.4),
+                        ),
                       ),
-                      if (isOnline)
-                        Positioned(
-                          right: 0,
-                          bottom: 0,
-                          child: Container(
-                            width: 16,
-                            height: 16,
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF34D399),
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                  color: ZynboApp.brandCream, width: 2.4),
+                    ),
+                ],
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.spaceGrotesk(
+                              fontSize: 16,
+                              fontWeight: hasUnread
+                                  ? FontWeight.w800
+                                  : FontWeight.w700,
+                              color: ZynboApp.brandInk,
+                              letterSpacing: -0.2,
                             ),
                           ),
                         ),
-                    ],
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                name,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: GoogleFonts.spaceGrotesk(
-                                  fontSize: 16,
-                                  fontWeight: hasUnread
-                                      ? FontWeight.w800
-                                      : FontWeight.w700,
-                                  color: ZynboApp.brandInk,
-                                  letterSpacing: -0.2,
-                                ),
-                              ),
+                        if (updatedAt != null)
+                          Text(
+                            _formatStamp(updatedAt!),
+                            style: GoogleFonts.spaceGrotesk(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: hasUnread
+                                  ? ZynboApp.brandTeal
+                                  : ZynboApp.brandInk.withOpacity(0.45),
                             ),
-                            if (updatedAt != null)
-                              Text(
-                                _formatStamp(updatedAt!),
-                                style: GoogleFonts.spaceGrotesk(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                  color: hasUnread
-                                      ? ZynboApp.brandTeal
-                                      : ZynboApp.brandInk.withOpacity(0.45),
-                                ),
-                              ),
-                          ],
-                        ),
-                        const SizedBox(height: 3),
-                        Row(
-                          children: [
-                            if (isOnline)
-                              Padding(
-                                padding: const EdgeInsets.only(right: 6),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 6, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: ZynboApp.brandLime,
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Text(
-                                    'online',
-                                    style: GoogleFonts.spaceGrotesk(
-                                      fontSize: 9,
-                                      fontWeight: FontWeight.w800,
-                                      color: ZynboApp.brandInk,
-                                      letterSpacing: 0.4,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            Expanded(
-                              child: Text(
-                                otherTyping
-                                    ? 'typing…'
-                                    : (lastMessage.isEmpty
-                                        ? 'Tap to start chatting'
-                                        : lastMessage),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: GoogleFonts.spaceGrotesk(
-                                  fontSize: 13,
-                                  color: otherTyping
-                                      ? ZynboApp.brandTeal
-                                      : (hasUnread
-                                          ? ZynboApp.brandInk
-                                              .withOpacity(0.85)
-                                          : (lastMessage.isEmpty
-                                              ? ZynboApp.brandInk
-                                                  .withOpacity(0.4)
-                                              : ZynboApp.brandInk
-                                                  .withOpacity(0.6))),
-                                  fontStyle: (otherTyping ||
-                                          lastMessage.isEmpty)
-                                      ? FontStyle.italic
-                                      : FontStyle.normal,
-                                  fontWeight: (otherTyping || hasUnread)
-                                      ? FontWeight.w700
-                                      : FontWeight.w400,
-                                ),
-                              ),
-                            ),
-                            if (hasUnread) ...[
-                              const SizedBox(width: 8),
-                              _UnreadBadge(count: unread),
-                            ],
-                          ],
-                        ),
+                          ),
                       ],
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 3),
+                    Row(
+                      children: [
+                        if (!isGroup && isOnline)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 6),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: ZynboApp.brandLime,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                'online',
+                                style: GoogleFonts.spaceGrotesk(
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w800,
+                                  color: ZynboApp.brandInk,
+                                  letterSpacing: 0.4,
+                                ),
+                              ),
+                            ),
+                          ),
+                        if (!otherTyping &&
+                            lastMessageType == 'image' &&
+                            lastMessage.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 4),
+                            child: Icon(
+                              Icons.photo_camera_outlined,
+                              size: 14,
+                              color: ZynboApp.brandInk.withOpacity(0.55),
+                            ),
+                          ),
+                        if (!otherTyping && lastMessageType == 'voice')
+                          Padding(
+                            padding: const EdgeInsets.only(right: 4),
+                            child: Icon(
+                              Icons.mic_none_rounded,
+                              size: 14,
+                              color: ZynboApp.brandInk.withOpacity(0.55),
+                            ),
+                          ),
+                        Expanded(
+                          child: Text(
+                            otherTyping
+                                ? 'typing…'
+                                : (lastMessage.isEmpty
+                                    ? (subtitleSuffix ??
+                                        'Tap to start chatting')
+                                    : lastMessage),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.spaceGrotesk(
+                              fontSize: 13,
+                              color: otherTyping
+                                  ? ZynboApp.brandTeal
+                                  : (hasUnread
+                                      ? ZynboApp.brandInk.withOpacity(0.85)
+                                      : (lastMessage.isEmpty
+                                          ? ZynboApp.brandInk
+                                              .withOpacity(0.4)
+                                          : ZynboApp.brandInk
+                                              .withOpacity(0.6))),
+                              fontStyle:
+                                  (otherTyping || lastMessage.isEmpty)
+                                      ? FontStyle.italic
+                                      : FontStyle.normal,
+                              fontWeight: (otherTyping || hasUnread)
+                                  ? FontWeight.w700
+                                  : FontWeight.w400,
+                            ),
+                          ),
+                        ),
+                        if (hasUnread) ...[
+                          const SizedBox(width: 8),
+                          _UnreadBadge(count: unread),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ),
+            ],
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 

@@ -1,7 +1,7 @@
 name: zynbo
 description: "Zynbo — a modern WhatsApp-like chat application built with Flutter and Firebase."
 publish_to: 'none'
-version: 0.1.0+1
+version: 0.2.0+2
 
 environment:
   sdk: ">=3.3.0 <4.0.0"
@@ -27,6 +27,12 @@ dependencies:
   image_picker: ^1.0.7
   shared_preferences: ^2.2.2
   intl: ^0.19.0
+
+  # Media (groups + voice notes)
+  record: ^5.1.0
+  just_audio: ^0.9.36
+  permission_handler: ^11.2.0
+  path_provider: ^2.1.2
 
 dev_dependencies:
   flutter_test:

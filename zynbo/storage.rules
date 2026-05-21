@@ -1,0 +1,25 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Chat media — readable + writable only by chat participants.
+    // Size cap: 20 MB. Pulls participants from the matching Firestore chat doc.
+    match /chats/{chatId}/{allPaths=**} {
+      allow read: if request.auth != null
+                  && request.auth.uid in
+                     firestore.get(/databases/(default)/documents/chats/$(chatId)).data.participants;
+      allow write: if request.auth != null
+                   && request.auth.uid in
+                      firestore.get(/databases/(default)/documents/chats/$(chatId)).data.participants
+                   && request.resource.size < 20 * 1024 * 1024;
+    }
+
+    // User-owned files (avatars).
+    match /users/{uid}/{allPaths=**} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+                   && request.auth.uid == uid
+                   && request.resource.size < 5 * 1024 * 1024;
+    }
+  }
+}

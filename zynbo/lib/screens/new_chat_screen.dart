@@ -7,6 +7,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../main.dart';
 import '../services/chat_service.dart';
 import 'chat_screen.dart';
+import 'create_group_screen.dart';
 
 /// Lets the user find another Zynbo member by email or name
 /// and start a 1:1 chat with them.
@@ -34,6 +35,68 @@ class _NewChatScreenState extends State<NewChatScreen> {
       appBar: AppBar(title: const Text('Start a new chat')),
       body: Column(
         children: [
+          // "New group" entry
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 6),
+            child: Material(
+              color: ZynboApp.brandTeal,
+              borderRadius: BorderRadius.circular(18),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(18),
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                        builder: (_) => const CreateGroupScreen()),
+                  );
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 14),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: const BoxDecoration(
+                          color: ZynboApp.brandLime,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.group_add_rounded,
+                            color: ZynboApp.brandInk, size: 22),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'New group',
+                              style: GoogleFonts.spaceGrotesk(
+                                color: Colors.white,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Create a group chat with friends',
+                              style: GoogleFonts.spaceGrotesk(
+                                color: Colors.white.withOpacity(0.7),
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(Icons.arrow_forward_rounded,
+                          color: ZynboApp.brandLime),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
             child: TextField(

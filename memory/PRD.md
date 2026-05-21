@@ -28,7 +28,41 @@ Build **Zynbo**, a Flutter mobile chat application similar to WhatsApp. Uses Fir
 - `ZynboUser` model + all screens migrated to `name` / `photo` schema
 - Home profile card chip reactively flips Online ↔ Offline via Firestore stream
 
-### Iteration 5 (Jan 2026) — Presence, Read Receipts, Typing ✅
+### Iteration 6 (Jan 2026) — Groups + Media (Phase A) ✅
+
+**Group chats**
+- Chat doc now has `type: 'direct' | 'group'` discriminator; groups also carry `groupName`, `groupPhoto`, `createdBy`, `admins`, N-person `participants`
+- `ChatService.createGroup({createdBy, participants, groupName, groupPhoto})` returns a Firestore auto-id
+- `ChatService.sendMessage` now accepts `recipientIds: List<String>` and increments unread for ALL non-sender participants — works for both 1:1 and groups
+- New `CreateGroupScreen` (2-step: pick members → name+photo)
+- `NewChatScreen` adds a prominent "New group" entry at the top
+- `ChatScreen` group-aware: header shows group photo + name + `N members`, plus multi-user typing roll-up ("Alice +2 are typing…")
+- Group bubbles for non-self messages show sender name in lime above the text (`_SenderName` stream)
+- Read receipts in groups: ✓✓ only when ALL other participants have read
+
+**Media — images**
+- `image_picker` integration (gallery + camera) via composer's `+` button → bottom-sheet picker
+- Upload to Firebase Storage at `/chats/{chatId}/img_<ts>.jpg` (1600px max, 82% quality)
+- Image messages render with rounded corners, in-bubble loading shimmer, cached via `cached_network_image`
+- Chat list preview shows a camera icon + "Photo" label
+
+**Media — voice notes**
+- New `MediaService.uploadChatMedia` for Storage I/O
+- Composer mic button → records via `record` package (AAC, 96kbps M4A), displays live timer + cancel button
+- Stops & uploads on send tap; sends as `type: 'voice'` with `mediaUrl` + `durationMs`
+- Voice bubbles render with play/pause button, linear progress, current/total time via `just_audio`
+- Chat list preview shows a mic icon + "Voice message" label
+- Microphone permission requested at record-time via `permission_handler`
+
+**Security**
+- `firestore.rules` updated: group chats need `participants.size() >= 2` instead of `== 2`
+- New `storage.rules` published: chat media readable/writable only by participants (20 MB cap); user-owned files (5 MB cap)
+
+**Pubspec additions:** `record ^5.1.0`, `just_audio ^0.9.36`, `permission_handler ^11.2.0`, `path_provider ^2.1.2`
+
+**Native config (called out in README):** Android `RECORD_AUDIO` + media perms in `AndroidManifest.xml`; iOS `NSCameraUsageDescription` / `NSMicrophoneUsageDescription` / `NSPhotoLibraryUsageDescription` in `Info.plist`
+
+
 
 **Lifecycle-aware presence**
 - New `lib/services/presence_service.dart` with `goOnline` / `goOffline`

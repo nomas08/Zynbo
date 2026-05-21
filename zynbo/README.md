@@ -113,9 +113,32 @@ defaultConfig {
 }
 ```
 
-### 7. Enable Firestore
+### 6b. Native permissions (groups + media)
+
+**`android/app/src/main/AndroidManifest.xml`** — add inside `<manifest>`:
+```xml
+<uses-permission android:name="android.permission.RECORD_AUDIO" />
+<uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+<uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+<uses-permission android:name="android.permission.CAMERA" />
+<uses-permission android:name="android.permission.INTERNET" />
+```
+
+**`ios/Runner/Info.plist`** — add inside `<dict>`:
+```xml
+<key>NSCameraUsageDescription</key>
+<string>Zynbo needs camera access to send photos.</string>
+<key>NSPhotoLibraryUsageDescription</key>
+<string>Zynbo needs photo library access to attach images.</string>
+<key>NSMicrophoneUsageDescription</key>
+<string>Zynbo needs microphone access to record voice messages.</string>
+```
+
+### 7. Enable Firestore + Storage
 - Firebase Console → **Firestore Database → Create database** → start in **production mode**
 - Paste the rules from `firestore.rules` (included in this repo) and **Publish**.
+- Firebase Console → **Storage → Get started** → start in production mode
+- Paste the rules from `storage.rules` (included in this repo) and **Publish**.
 
 ### 8. Run the app
 ```bash
