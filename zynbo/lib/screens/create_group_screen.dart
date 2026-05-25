@@ -115,8 +115,8 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
           : (_selectedUids.isEmpty
               ? null
               : FloatingActionButton.extended(
-                  backgroundColor: ZynboApp.brandInk,
-                  foregroundColor: ZynboApp.brandLime,
+                  backgroundColor: ZynboApp.brandLime,
+                  foregroundColor: ZynboApp.brandDark,
                   onPressed: () => setState(() => _step2 = true),
                   icon: const Icon(Icons.arrow_forward_rounded),
                   label: Text(
@@ -243,7 +243,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
                       ),
                       child: selected
                           ? const Icon(Icons.check_rounded,
-                              color: ZynboApp.brandInk, size: 16)
+                              color: ZynboApp.brandDark, size: 16)
                           : null,
                     ),
                     onTap: () => setState(() {
@@ -304,7 +304,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
                           shape: BoxShape.circle,
                         ),
                         child: const Icon(Icons.camera_alt_rounded,
-                            size: 18, color: ZynboApp.brandInk),
+                            size: 18, color: ZynboApp.brandDark),
                       ),
                     ),
                   ],
@@ -401,7 +401,7 @@ class _SelectedChip extends StatelessWidget {
                     width: 20,
                     height: 20,
                     decoration: const BoxDecoration(
-                      color: ZynboApp.brandInk,
+                      color: ZynboApp.brandDark,
                       shape: BoxShape.circle,
                     ),
                     child: const Icon(Icons.close_rounded,

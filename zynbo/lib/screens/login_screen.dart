@@ -101,7 +101,7 @@ class _LoginScreenState extends State<LoginScreen>
                             shape: BoxShape.circle,
                           ),
                           child: const Icon(Icons.chat_bubble_rounded,
-                              size: 22, color: ZynboApp.brandInk),
+                              size: 22, color: ZynboApp.brandDark),
                         ),
                         const SizedBox(width: 12),
                         Text(
@@ -232,7 +232,7 @@ class _GoogleSignInButton extends StatelessWidget {
               Text(
                 loading ? 'Signing you in…' : 'Continue with Google',
                 style: GoogleFonts.spaceGrotesk(
-                  color: ZynboApp.brandInk,
+                  color: ZynboApp.brandDark,
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
                 ),
@@ -255,12 +255,12 @@ class _GoogleLogo extends StatelessWidget {
       alignment: Alignment.center,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        border: Border.all(color: ZynboApp.brandInk, width: 2.2),
+        border: Border.all(color: ZynboApp.brandDark, width: 2.2),
       ),
       child: Text(
         'G',
         style: GoogleFonts.spaceGrotesk(
-          color: ZynboApp.brandInk,
+          color: ZynboApp.brandDark,
           fontSize: 14,
           fontWeight: FontWeight.w800,
         ),

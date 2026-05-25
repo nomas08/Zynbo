@@ -62,7 +62,7 @@ class _NewChatScreenState extends State<NewChatScreen> {
                           shape: BoxShape.circle,
                         ),
                         child: const Icon(Icons.group_add_rounded,
-                            color: ZynboApp.brandInk, size: 22),
+                            color: ZynboApp.brandDark, size: 22),
                       ),
                       const SizedBox(width: 14),
                       Expanded(

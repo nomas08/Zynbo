@@ -28,7 +28,60 @@ Build **Zynbo**, a Flutter mobile chat application similar to WhatsApp. Uses Fir
 - `ZynboUser` model + all screens migrated to `name` / `photo` schema
 - Home profile card chip reactively flips Online ↔ Offline via Firestore stream
 
-### Iteration 6 (Jan 2026) — Groups + Media (Phase A) ✅
+### Iteration 7 (Jan 2026) — Architecture reorg + Dark mode + Chat background ✅
+
+**Project reorganized into a scalable structure:**
+```
+lib/
+├── main.dart                       # ZynboApp + AuthGate + theme
+├── firebase_options.dart
+├── theme/
+│   └── zynbo_colors.dart           # NEW — single source of truth for palette
+├── models/
+│   ├── user_model.dart
+│   └── message_model.dart
+├── services/                       # All business logic
+│   ├── auth_service.dart           # Google sign-in, profile, sign-out
+│   ├── chat_service.dart           # Direct + group chats, messages, typing, unread
+│   ├── presence_service.dart       # goOnline / goOffline
+│   └── media_service.dart          # Firebase Storage uploads
+├── widgets/                        # NEW — extracted reusables
+│   ├── chat_background.dart        # Branded doodle pattern overlay
+│   ├── chat_tile.dart              # ChatTile (direct + group)
+│   ├── message_bubble.dart         # MessageBubble + ImageContent + VoiceContent + ReadTicks + SenderName + DayDivider
+│   └── unread_badge.dart           # UnreadBadge pill
+└── screens/
+    ├── login_screen.dart
+    ├── profile_setup_screen.dart
+    ├── chats_list_screen.dart
+    ├── chat_screen.dart
+    ├── new_chat_screen.dart
+    └── create_group_screen.dart
+
+assets/
+└── images/
+    └── chat_bg.png                 # NEW — Zynbo branded doodle background
+```
+
+**Dark theme overhaul (Telegram/WhatsApp-style with Zynbo identity):**
+- New `ZynboColors` palette: `bg #050C0B`, `surface #0E1716`, `surfaceHi #182725`, `text #E8EFEC`, `muted #8FA39F`, `teal #0E5651`, `lime #B6FF3D`, `deepInk #06100F`
+- Material 3 dark theme with the lime as primary accent, teal as secondary, surface-based input fields
+- All screens use Space Grotesk via google_fonts (unchanged)
+- Backward-compat: `ZynboApp.brandTeal/brandLime/brandInk/brandCream/brandDark/brandSurface/brandSurfaceHi` aliases preserved so legacy call sites keep compiling
+
+**Chat background image:**
+- `ChatBackground` widget tiles `assets/images/chat_bg.png` at **18% opacity** over the dark scaffold
+- Adds a top + bottom dark gradient (0.55–0.60 opacity) to focus the eye on the message column
+- Wrapped around `ChatScreen` body so messages always stay readable
+
+**Visual refinements:**
+- Bubbles: teal for mine, `surfaceHi` for theirs (replaces white), soft drop-shadows for elevation
+- Tiles: transparent over dark scaffold, lime online-dot border keys to bg color, lime timestamp/preview accent for unread
+- Composer: lime mic/send button (deepInk icon), surface-tinted text field
+- AppBar in chat screen has a 0.6 px hairline divider matching Telegram's minimal look
+- FloatingActionButton swapped from extended to compact lime circle for cleaner WhatsApp-style FAB
+
+
 
 **Group chats**
 - Chat doc now has `type: 'direct' | 'group'` discriminator; groups also carry `groupName`, `groupPhoto`, `createdBy`, `admins`, N-person `participants`

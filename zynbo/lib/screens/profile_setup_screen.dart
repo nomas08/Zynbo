@@ -148,7 +148,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                             shape: BoxShape.circle,
                           ),
                           child: const Icon(Icons.camera_alt_rounded,
-                              size: 18, color: ZynboApp.brandInk),
+                              size: 18, color: ZynboApp.brandDark),
                         ),
                       ),
                     ],
