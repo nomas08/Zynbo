@@ -191,4 +191,52 @@ class ChatService {
       });
     } catch (_) {/* best-effort */}
   }
+
+  // ─────────────────── Group management ───────────────────
+
+  /// Remove [uid] from a group chat. Also cleans their entries
+  /// from unreadCount, typing, and mutedBy.
+  Future<void> leaveGroup({
+    required String chatId,
+    required String uid,
+  }) async {
+    await _db.collection('chats').doc(chatId).update({
+      'participants': FieldValue.arrayRemove([uid]),
+      'mutedBy': FieldValue.arrayRemove([uid]),
+      'unreadCount.$uid': FieldValue.delete(),
+      'typing.$uid': FieldValue.delete(),
+    });
+  }
+
+  Future<void> updateGroupName({
+    required String chatId,
+    required String name,
+  }) async {
+    await _db.collection('chats').doc(chatId).update({
+      'groupName': name,
+    });
+  }
+
+  Future<void> updateGroupPhoto({
+    required String chatId,
+    required String photoUrl,
+  }) async {
+    await _db.collection('chats').doc(chatId).update({
+      'groupPhoto': photoUrl,
+    });
+  }
+
+  /// Toggle mute for a given user on a chat (works for direct + group).
+  /// Stored as a `mutedBy: [uid, ...]` array on the chat doc.
+  Future<void> setMuted({
+    required String chatId,
+    required String uid,
+    required bool muted,
+  }) async {
+    await _db.collection('chats').doc(chatId).update({
+      'mutedBy': muted
+          ? FieldValue.arrayUnion([uid])
+          : FieldValue.arrayRemove([uid]),
+    });
+  }
 }

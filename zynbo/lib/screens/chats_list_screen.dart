@@ -254,6 +254,10 @@ class _ChatList extends StatelessWidget {
                     .any((e) => e.key != currentUid && e.value == true)
                 : (typingMap[otherUid] == true);
 
+            final mutedBy =
+                (data['mutedBy'] as List?)?.cast<String>() ?? const [];
+            final isMuted = mutedBy.contains(currentUid);
+
             return ChatTile(
               chatId: docs[i].id,
               currentUid: currentUid,
@@ -268,6 +272,7 @@ class _ChatList extends StatelessWidget {
               updatedAt: (data['updatedAt'] as Timestamp?)?.toDate(),
               unread: unread,
               otherTyping: otherTyping,
+              muted: isMuted,
               query: query,
             );
           },

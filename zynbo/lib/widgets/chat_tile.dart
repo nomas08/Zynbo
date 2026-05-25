@@ -23,6 +23,7 @@ class ChatTile extends StatelessWidget {
   final DateTime? updatedAt;
   final int unread;
   final bool otherTyping;
+  final bool muted;
   final String query;
 
   const ChatTile({
@@ -39,6 +40,7 @@ class ChatTile extends StatelessWidget {
     required this.updatedAt,
     required this.unread,
     required this.otherTyping,
+    required this.muted,
     required this.query,
   });
 
@@ -142,13 +144,19 @@ class ChatTile extends StatelessWidget {
                             ),
                           ),
                         ),
+                        if (muted)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 6),
+                            child: Icon(Icons.volume_off_rounded,
+                                size: 14, color: ZynboColors.muted),
+                          ),
                         if (updatedAt != null)
                           Text(
                             _formatStamp(updatedAt!),
                             style: GoogleFonts.spaceGrotesk(
                               fontSize: 11,
                               fontWeight: FontWeight.w600,
-                              color: hasUnread
+                              color: (hasUnread && !muted)
                                   ? ZynboColors.lime
                                   : ZynboColors.muted,
                             ),
@@ -163,6 +171,7 @@ class ChatTile extends StatelessWidget {
                       subtitleSuffix: subtitleSuffix,
                       hasUnread: hasUnread,
                       unread: unread,
+                      muted: muted,
                     ),
                   ],
                 ),
@@ -269,6 +278,7 @@ class _SubtitleRow extends StatelessWidget {
   final String? subtitleSuffix;
   final bool hasUnread;
   final int unread;
+  final bool muted;
 
   const _SubtitleRow({
     required this.otherTyping,
@@ -277,6 +287,7 @@ class _SubtitleRow extends StatelessWidget {
     required this.subtitleSuffix,
     required this.hasUnread,
     required this.unread,
+    required this.muted,
   });
 
   @override
@@ -323,7 +334,29 @@ class _SubtitleRow extends StatelessWidget {
         ),
         if (hasUnread) ...[
           const SizedBox(width: 8),
-          UnreadBadge(count: unread),
+          // Muted chats use a subdued badge color
+          muted
+              ? Container(
+                  constraints:
+                      const BoxConstraints(minWidth: 22, minHeight: 22),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: ZynboColors.surfaceHi,
+                    borderRadius: BorderRadius.circular(22),
+                  ),
+                  child: Center(
+                    child: Text(
+                      unread > 99 ? '99+' : '$unread',
+                      style: GoogleFonts.spaceGrotesk(
+                        color: ZynboColors.muted,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                )
+              : UnreadBadge(count: unread),
         ],
       ],
     );

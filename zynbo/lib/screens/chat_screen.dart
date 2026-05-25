@@ -15,6 +15,7 @@ import '../services/media_service.dart';
 import '../theme/zynbo_colors.dart';
 import '../widgets/chat_background.dart';
 import '../widgets/message_bubble.dart';
+import 'group_settings_screen.dart';
 
 class ChatScreen extends StatefulWidget {
   final String chatId;
@@ -373,15 +374,28 @@ class _ChatScreenState extends State<ChatScreen> {
             width: 0.6,
           ),
         ),
-        title: _ChatHeader(
-          chatId: widget.chatId,
-          currentUid: widget.currentUid,
-          otherUid: widget.otherUid,
-          fallbackName: widget.otherName,
-          fallbackPhoto: widget.otherPhoto,
-          initialStatus: widget.otherStatus,
-          isGroup: widget.isGroup,
-          onParticipants: (p) => _participants = p,
+        title: InkWell(
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => GroupSettingsScreen(
+                  chatId: widget.chatId,
+                  currentUid: widget.currentUid,
+                  isGroup: widget.isGroup,
+                ),
+              ),
+            );
+          },
+          child: _ChatHeader(
+            chatId: widget.chatId,
+            currentUid: widget.currentUid,
+            otherUid: widget.otherUid,
+            fallbackName: widget.otherName,
+            fallbackPhoto: widget.otherPhoto,
+            initialStatus: widget.otherStatus,
+            isGroup: widget.isGroup,
+            onParticipants: (p) => _participants = p,
+          ),
         ),
       ),
       body: ChatBackground(

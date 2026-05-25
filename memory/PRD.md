@@ -28,7 +28,33 @@ Build **Zynbo**, a Flutter mobile chat application similar to WhatsApp. Uses Fir
 - `ZynboUser` model + all screens migrated to `name` / `photo` schema
 - Home profile card chip reactively flips Online ↔ Offline via Firestore stream
 
-### Iteration 7 (Jan 2026) — Architecture reorg + Dark mode + Chat background ✅
+### Iteration 8 (Jan 2026) — Group settings / chat info ✅
+
+**New screen:** `lib/screens/group_settings_screen.dart`
+- Tap the chat header in `ChatScreen` (groups or direct) → navigate here
+- Hero with avatar (lime-bordered) + group/chat name + member count + creation date
+- For groups (`type == 'group'`):
+  - Tap avatar → pick + upload new group photo via `MediaService.uploadGroupPhoto`
+  - Tap name → inline rename dialog
+  - Members list — each row streams the user's live profile + online dot, "You" label, "admin" pill for `createdBy`
+  - **Leave group** — confirm dialog → `ChatService.leaveGroup` (removes uid from participants, mutedBy, unreadCount, typing maps); on success pops back to chats list
+- For direct chats: only the Notifications toggle is shown
+
+**Mute / notifications**
+- `mutedBy: [uid, …]` array on chat doc; toggled via `ChatService.setMuted`
+- Switch on settings screen flips it instantly via Firestore
+- Chat list tile reflects muted state:
+  - Tiny `volume_off` icon to the left of the timestamp
+  - Timestamp/preview drop their lime "unread" accent (muted chats don't grab the eye)
+  - Unread badge swaps from lime → grey (`surfaceHi` with `muted` text) when chat is muted
+
+**ChatService additions**
+- `leaveGroup({chatId, uid})` — atomic cleanup of participant + unread + typing + mutedBy
+- `updateGroupName({chatId, name})`
+- `updateGroupPhoto({chatId, photoUrl})`
+- `setMuted({chatId, uid, muted})` — arrayUnion / arrayRemove on `mutedBy`
+
+
 
 **Project reorganized into a scalable structure:**
 ```
