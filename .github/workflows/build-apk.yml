@@ -1,0 +1,163 @@
+name: Build Zynbo APK
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'zynbo/**'
+      - '.github/workflows/build-apk.yml'
+  workflow_dispatch:    # lets you trigger manually from the Actions tab
+
+jobs:
+  build-apk:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    defaults:
+      run:
+        working-directory: zynbo
+
+    steps:
+      # ─────────────────── Checkout ───────────────────
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      # ─────────────────── Toolchain ───────────────────
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.5'
+          channel: 'stable'
+          cache: true
+
+      - name: Flutter doctor
+        run: flutter doctor -v
+
+      # ─────────────────── Platform folders (idempotent) ───────────────────
+      # Our repo only ships lib/ + pubspec.yaml + rules. Generate the android/
+      # folder on the fly if it isn't committed yet. Existing files are
+      # never overwritten by `flutter create`.
+      - name: Bootstrap platform folders
+        run: |
+          flutter create . \
+            --org com.zynbo \
+            --project-name zynbo \
+            --platforms android \
+            --no-overwrite
+
+      # ─────────────────── Inject Android permissions ───────────────────
+      - name: Inject AndroidManifest permissions
+        run: |
+          MANIFEST="android/app/src/main/AndroidManifest.xml"
+          # Insert permissions just after the <manifest> opening tag, if not already present.
+          for PERM in \
+            "android.permission.INTERNET" \
+            "android.permission.RECORD_AUDIO" \
+            "android.permission.READ_MEDIA_IMAGES" \
+            "android.permission.READ_MEDIA_AUDIO" \
+            "android.permission.CAMERA"; do
+            if ! grep -q "$PERM" "$MANIFEST"; then
+              sed -i "0,/<manifest /{s|<manifest |<manifest xmlns:tools=\"http://schemas.android.com/tools\" |}" "$MANIFEST" || true
+              sed -i "/<manifest[^>]*>/a\\    <uses-permission android:name=\"$PERM\"/>" "$MANIFEST"
+            fi
+          done
+          echo "── Manifest after injection ──"
+          cat "$MANIFEST"
+
+      # ─────────────────── Firebase config (from secrets) ───────────────────
+      - name: Restore firebase_options.dart
+        env:
+          FIREBASE_OPTIONS_DART: ${{ secrets.FIREBASE_OPTIONS_DART }}
+        run: |
+          if [ -z "$FIREBASE_OPTIONS_DART" ]; then
+            echo "::error::Missing secret FIREBASE_OPTIONS_DART. See docs/CI_SETUP.md"
+            exit 1
+          fi
+          printf '%s' "$FIREBASE_OPTIONS_DART" > lib/firebase_options.dart
+          echo "Wrote lib/firebase_options.dart ($(wc -c < lib/firebase_options.dart) bytes)"
+
+      - name: Restore google-services.json
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -z "$GOOGLE_SERVICES_JSON" ]; then
+            echo "::error::Missing secret GOOGLE_SERVICES_JSON. See docs/CI_SETUP.md"
+            exit 1
+          fi
+          mkdir -p android/app
+          printf '%s' "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
+          echo "Wrote android/app/google-services.json ($(wc -c < android/app/google-services.json) bytes)"
+
+      # ─────────────────── Gradle wiring (idempotent) ───────────────────
+      # Apply google-services plugin + bump minSdk if `flutter create` didn't.
+      - name: Ensure google-services Gradle plugin
+        run: |
+          PROJECT_GRADLE="android/build.gradle"
+          APP_GRADLE="android/app/build.gradle"
+
+          if [ -f "$PROJECT_GRADLE" ] && ! grep -q "com.google.gms:google-services" "$PROJECT_GRADLE"; then
+            # Add the classpath inside the buildscript dependencies block.
+            sed -i "/buildscript {/,/^}/s|dependencies {|dependencies {\n        classpath 'com.google.gms:google-services:4.4.2'|" "$PROJECT_GRADLE"
+          fi
+
+          if [ -f "$APP_GRADLE" ] && ! grep -q "com.google.gms.google-services" "$APP_GRADLE"; then
+            echo "" >> "$APP_GRADLE"
+            echo "apply plugin: 'com.google.gms.google-services'" >> "$APP_GRADLE"
+          fi
+
+          # Bump minSdkVersion to 23 (firebase_auth requires >=21, google_sign_in works best on 23+)
+          sed -i "s/minSdkVersion [0-9]\+/minSdkVersion 23/" "$APP_GRADLE" || true
+          sed -i "s/minSdk = [0-9]\+/minSdk = 23/" "$APP_GRADLE" || true
+          sed -i "s/minSdk [0-9]\+/minSdk 23/" "$APP_GRADLE" || true
+
+          echo "── android/app/build.gradle (tail) ──"
+          tail -n 30 "$APP_GRADLE"
+
+      # ─────────────────── Build ───────────────────
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Flutter analyze (non-blocking)
+        run: flutter analyze || true
+
+      - name: Build APK (release, debug-signed)
+        # `--release` produces an optimized binary; without a signing config it's
+        # signed with the auto-generated debug keystore, which is fine for personal
+        # / tester installs but NOT for Play Store. See docs/CI_SETUP.md for prod.
+        run: flutter build apk --release --no-tree-shake-icons
+
+      - name: Rename APK with run info
+        run: |
+          SRC="build/app/outputs/flutter-apk/app-release.apk"
+          DEST="build/app/outputs/flutter-apk/zynbo-${{ github.run_number }}-${{ github.sha }}.apk"
+          mv "$SRC" "$DEST"
+          ls -lh "$DEST"
+          echo "APK_PATH=$DEST" >> $GITHUB_ENV
+
+      # ─────────────────── Publish artifact ───────────────────
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zynbo-apk-${{ github.run_number }}
+          path: zynbo/build/app/outputs/flutter-apk/zynbo-*.apk
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Summary
+        run: |
+          echo "## ✅ Zynbo APK built" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Run:** #${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Commit:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "📥 Download from the **Artifacts** section above (\`zynbo-apk-${{ github.run_number }}\`)." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Transfer the \`.apk\` to your Android phone (Drive, email, USB)," >> $GITHUB_STEP_SUMMARY
+          echo "tap to install, and allow \"Install unknown apps\" if prompted." >> $GITHUB_STEP_SUMMARY
