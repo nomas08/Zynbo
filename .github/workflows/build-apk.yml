@@ -124,6 +124,9 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Generate app icons (Zynbo brand)
+        run: dart run flutter_launcher_icons
+
       - name: Flutter analyze (non-blocking)
         run: flutter analyze || true
 
