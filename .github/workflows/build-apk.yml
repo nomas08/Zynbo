@@ -125,7 +125,7 @@ jobs:
         run: flutter pub get
 
       - name: Generate app icons (Zynbo brand)
-        run: dart run flutter_launcher_icons
+        run: dart run flutter_launcher_icons -f flutter_launcher_icons.yaml || true
 
       - name: Flutter analyze (non-blocking)
         run: flutter analyze || true
